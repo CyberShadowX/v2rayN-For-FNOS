@@ -6,6 +6,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import stat
 import subprocess
 import tempfile
 import unittest
@@ -366,7 +367,23 @@ class GuardianDiscoveryTests(unittest.TestCase):
                 kernel.link = {"ifindex": 83}
                 return core
 
+            real_fstat = os.fstat
+
+            def synthetic_lease_fstat(fd):
+                metadata = real_fstat(fd)
+                if fd != descriptor:
+                    return metadata
+                # Only this fixture's lease represents the root guardian's
+                # inherited FD. Preserve the real inode/type/path checks even
+                # when the test process and its temporary files are non-root.
+                self.assertTrue(stat.S_ISREG(metadata.st_mode))
+                self.assertEqual(metadata.st_ino, (directory / "lock").stat().st_ino)
+                owned = list(metadata)
+                owned[stat.ST_UID] = 0
+                return os.stat_result(owned)
+
             stack.enter_context(patch.object(network, "_root_platform"))
+            stack.enter_context(patch.object(network.os, "fstat", side_effect=synthetic_lease_fstat))
             stack.enter_context(patch.object(network, "_trusted_file", side_effect=lambda path: path))
             stack.enter_context(patch.object(network, "_private_directory", side_effect=lambda path: path))
             stack.enter_context(patch.object(network, "_read_json", return_value=copy.deepcopy(spec)))
@@ -388,6 +405,11 @@ class GuardianDiscoveryTests(unittest.TestCase):
             stack.enter_context(patch.object(network, "_cleanup_owned", side_effect=lambda state: cleanup_owned(state, kernel.run)))
             stack.enter_context(patch.object(network, "_verify_absent", side_effect=lambda state: verify_absent(state, kernel.run)))
             try:
+                other_fd = os.open(directory / "unrelated", os.O_RDWR | os.O_CREAT, 0o600)
+                try:
+                    self.assertEqual(network.os.fstat(other_fd), real_fstat(other_fd))
+                finally:
+                    os.close(other_fd)
                 self.assertEqual(network._guard(str(directory / "launch.json"), descriptor), 1)
             finally:
                 try:
@@ -423,6 +445,24 @@ class GuardianDiscoveryTests(unittest.TestCase):
     def test_lan_only_installation_also_rolls_back_on_runtime_route_loss(self):
         journal = self.guard_loss(target="10.42.0.1", passes=2, tailscale=False)
         self.assertIn("active", [state["phase"] for state in journal])
+
+    def test_nonroot_process_and_file_owner_still_reach_stateful_rollback(self):
+        real_fstat = os.fstat
+        observed = []
+
+        def nonroot_fstat(fd):
+            metadata = list(real_fstat(fd))
+            metadata[stat.ST_UID] = 1001
+            observed.append(fd)
+            return os.stat_result(metadata)
+
+        with patch.object(network.os, "geteuid", return_value=1001, create=True):
+            with patch.object(network.os, "fstat", side_effect=nonroot_fstat):
+                self.assertEqual(network.os.geteuid(), 1001)
+                journal = self.guard_loss(target="10.42.0.1", passes=2)
+        self.assertTrue(observed)
+        self.assertIn("active", [state["phase"] for state in journal])
+        self.assertTrue(journal[-1]["cleanup_verified"])
 
     def test_start_passes_the_discovered_plan_to_guardian_after_read_checks(self):
         local = LocalNetwork(tailscale=True)
