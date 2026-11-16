@@ -1,0 +1,20 @@
+{
+  "component": "SQLite shared library",
+  "upstream_version": "3.40.1",
+  "package": "libsqlite3-0",
+  "package_version": "3.40.1-2+deb12u2",
+  "distribution": "Debian 12 bookworm",
+  "architecture": "amd64",
+  "package_url": "https://deb.debian.org/debian/pool/main/s/sqlite3/libsqlite3-0_3.40.1-2+deb12u2_amd64.deb",
+  "package_sha256": "a8d78b40e9b4e422224aeebfe0e4dfc243f6acf3532490b0c05480d4283d41e2",
+  "package_member": "./usr/lib/x86_64-linux-gnu/libsqlite3.so.0.8.6",
+  "private_alias": "e_sqlite3.so",
+  "file_size": 1437848,
+  "file_sha256": "2e6eef9a727f081f0d453b4e5e6cbd8b9ef8b6f86cbf7681cbad444d3b0b55c8",
+  "provenance": "Copied from the NAS installed Debian 12 library by the controller; independently matched byte for byte against the exact member in the public Debian package on 2026-11-16.",
+  "license": "public-domain",
+  "license_url": "https://www.sqlite.org/copyright.html",
+  "debian_copyright_file": "COPYRIGHT.debian",
+  "scope": "Private application-directory loader alias only. The system SQLite and glibc are not replaced.",
+  "acceptance": "GUI startup and database health must pass for each candidate release. SQLite 3.40.1 is not a promise of compatibility with all future application features."
+}

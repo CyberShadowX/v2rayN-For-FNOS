@@ -1,0 +1,64 @@
+{
+  "封装版本": "1.0.5",
+  "说明": "封装源代码随本源码包提供；上游程序保留原许可证。下列归档来自官方仓库的固定版本或提交。",
+  "binary_source": "https://github.com/2dust/v2rayN/tree/7.25.6",
+  "sources": [
+    {
+      "component": "v2rayn",
+      "file": "v2rayN-7.25.6.tar.gz",
+      "url": "https://codeload.github.com/2dust/v2rayN/tar.gz/refs/tags/7.25.6",
+      "size": 7403964,
+      "sha256": "281e34dac217b9b831756dec21d333e050eece6b0a4d7c69f16170a9cdf4a061"
+    },
+    {
+      "component": "mihomo",
+      "file": "mihomo-1.19.34.tar.gz",
+      "url": "https://codeload.github.com/MetaCubeX/mihomo/tar.gz/refs/tags/v1.19.34",
+      "size": 1299232,
+      "sha256": "e3284a44f1052f1c454c90d418faa244516c2470bf232b455ea18fc4f5fa6028"
+    },
+    {
+      "component": "xray",
+      "file": "Xray-core-701af60772cd.tar.gz",
+      "url": "https://codeload.github.com/XTLS/Xray-core/tar.gz/701af60772cda123492f86e383e1fdba066614a9",
+      "size": 1163357,
+      "sha256": "300e2b5450aef6b980b7fad6e5901ec567059c8ed5d7dd661ba152765eaee4a2"
+    },
+    {
+      "component": "sing-box",
+      "file": "sing-box-7054cac5124465ff.tar.gz",
+      "url": "https://codeload.github.com/SagerNet/sing-box/tar.gz/7054cac5124465ffdb145870d7c01885566711b1",
+      "size": 1984278,
+      "sha256": "03597bdd7fb4bd3a6350c3aff98968efeb5f4baf5d840c4389284d951fc2899d"
+    },
+    {
+      "component": "bundled-mihomo",
+      "file": "mihomo-e26714a181ac.tar.gz",
+      "url": "https://codeload.github.com/MetaCubeX/mihomo/tar.gz/e26714a181ac0e2fa803453c0a8e9a9ce94e31cb",
+      "size": 1133461,
+      "sha256": "a75220bf11ab56ef0d304c14c4d4c407edffe700761cdcc5b06105dfd8305168"
+    },
+    {
+      "component": "global-hotkeys",
+      "file": "GlobalHotKeys-162d401dfe01.tar.gz",
+      "url": "https://codeload.github.com/2dust/GlobalHotKeys/tar.gz/162d401dfe0140b41d1fa349b9aadb4060e739b1",
+      "size": 15358,
+      "sha256": "ff1570772692ae1a92d046d3848cb78a16ce4936ba82a3796b0b42fa2c750f95"
+    },
+    {
+      "component": "sqlite",
+      "file": "sqlite3-3.40.1.orig.tar.xz",
+      "url": "https://deb.debian.org/debian/pool/main/s/sqlite3/sqlite3_3.40.1.orig.tar.xz",
+      "size": 8019048,
+      "sha256": "aaa776260ab4dc976db34aa7891819484c8676b5b2783123ebc6301e2ca5d655"
+    },
+    {
+      "component": "sqlite-debian",
+      "file": "sqlite3-3.40.1-2+deb12u2.debian.tar.xz",
+      "url": "https://deb.debian.org/debian/pool/main/s/sqlite3/sqlite3_3.40.1-2+deb12u2.debian.tar.xz",
+      "size": 34260,
+      "sha256": "0843bc12e4364076477935ce313a6d0796fd899a989ff18ebb6545540e10e4ca"
+    }
+  ],
+  "说明_内核": "随客户端发行包的内核未经本项目修改；来源版本/提交结合官方发行记录和 Go 构建信息记录。上游构建信息中的 dirty 标记保留，不能视为本项目修改或逐字节可复现构建承诺。"
+}

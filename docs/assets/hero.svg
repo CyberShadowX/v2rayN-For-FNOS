@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="520" viewBox="0 0 1600 520" role="img" aria-labelledby="title desc">
+  <title id="title">v2rayN For FNOS：飞牛原生桌面应用</title>
+  <desc id="desc">公开预览版 1.0.5。保留原版图形界面，通过浏览器访问，支持 NAS 与 Docker 网络接管、上游更新和回滚。</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#eff6ff"/><stop offset="1" stop-color="#ffffff"/></linearGradient>
+    <linearGradient id="panel" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#2563eb"/><stop offset="1" stop-color="#60a5fa"/></linearGradient>
+  </defs>
+  <rect width="1600" height="520" rx="28" fill="url(#bg)"/>
+  <circle cx="1480" cy="60" r="240" fill="#2563eb" opacity="0.05"/>
+  <circle cx="1110" cy="520" r="260" fill="#60a5fa" opacity="0.09"/>
+  <g font-family="Inter, Microsoft YaHei, Noto Sans CJK SC, Arial, sans-serif">
+    <rect x="72" y="57" width="192" height="35" rx="17.5" fill="#2563eb"/>
+    <text x="168" y="81" font-size="17" text-anchor="middle" fill="#ffffff" font-weight="600">飞牛 fnOS 原生应用</text>
+    <text x="72" y="186" font-size="66" font-weight="750" fill="#0f172a">v2rayN</text>
+    <text x="75" y="238" font-size="31" font-weight="600" fill="#2563eb">For FNOS</text>
+    <text x="74" y="304" font-size="29" font-weight="600" fill="#334155">熟悉的图形界面，在浏览器里打开。</text>
+    <text x="74" y="350" font-size="20" fill="#64748b">原生桌面 · NAS 与 Docker 接管 · 上游更新与回滚</text>
+    <g font-size="17" fill="#334155">
+      <rect x="74" y="401" width="184" height="42" rx="12" fill="#ffffff" stroke="#dbe3ef"/><text x="166" y="428" text-anchor="middle">公开预览 v1.0.5</text>
+      <rect x="272" y="401" width="116" height="42" rx="12" fill="#ffffff" stroke="#dbe3ef"/><text x="330" y="428" text-anchor="middle">x86_64</text>
+      <rect x="402" y="401" width="154" height="42" rx="12" fill="#ffffff" stroke="#dbe3ef"/><text x="479" y="428" text-anchor="middle">FPK 原生封装</text>
+    </g>
+    <g transform="translate(1010,80)">
+      <rect x="18" y="18" width="476" height="329" rx="25" fill="#0f172a" opacity="0.06"/>
+      <rect width="476" height="329" rx="25" fill="#ffffff" stroke="#dbe3ef"/>
+      <path d="M25 0H451Q476 0 476 25V62H0V25Q0 0 25 0Z" fill="#f8fafc"/>
+      <circle cx="27" cy="31" r="6" fill="#cbd5e1"/><circle cx="48" cy="31" r="6" fill="#cbd5e1"/><circle cx="69" cy="31" r="6" fill="#cbd5e1"/>
+      <text x="446" y="38" font-size="17" text-anchor="end" fill="#64748b">浏览器桌面</text>
+      <rect x="30" y="91" width="118" height="200" rx="17" fill="url(#panel)"/>
+      <text x="89" y="126" font-size="21" text-anchor="middle" font-weight="700" fill="#ffffff">NAS</text>
+      <g fill="#ffffff"><rect x="49" y="148" width="80" height="26" rx="6" opacity="0.9"/><rect x="49" y="185" width="80" height="26" rx="6" opacity="0.9"/><rect x="49" y="222" width="80" height="26" rx="6" opacity="0.9"/></g>
+      <g fill="#2563eb"><circle cx="114" cy="161" r="3"/><circle cx="114" cy="198" r="3"/><circle cx="114" cy="235" r="3"/></g>
+      <path d="M150 191H179" stroke="#60a5fa" stroke-width="4" stroke-linecap="round"/>
+      <g font-size="19" fill="#334155">
+        <rect x="184" y="96" width="259" height="53" rx="13" fill="#eff6ff"/><circle cx="209" cy="122" r="6" fill="#2563eb"/><text x="229" y="129">原版图形界面</text>
+        <rect x="184" y="165" width="259" height="53" rx="13" fill="#eff6ff"/><circle cx="209" cy="191" r="6" fill="#2563eb"/><text x="229" y="198">网络接管互斥</text>
+        <rect x="184" y="234" width="259" height="53" rx="13" fill="#eff6ff"/><circle cx="209" cy="260" r="6" fill="#2563eb"/><text x="229" y="267">更新与回滚</text>
+      </g>
+    </g>
+    <text x="1490" y="478" font-size="15" fill="#94a3b8" text-anchor="end">社区封装 · 非上游官方发行</text>
+  </g>
+</svg>

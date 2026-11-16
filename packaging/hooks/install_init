@@ -1,0 +1,24 @@
+#!/bin/bash
+set -eu
+export DEBIAN_FRONTEND=noninteractive
+packages=(xvfb openbox x11vnc novnc xauth dbus-x11 libgtk-3-0 libwebkit2gtk-4.1-0
+    libayatana-appindicator3-1 libnotify4 libnss3 libasound2 libfontconfig1 fonts-noto-cjk
+    python3-aiohttp python3-yaml curl unzip openssl xdotool xclip x11-utils xterm
+    libglib2.0-bin gsettings-desktop-schemas dconf-service dconf-gsettings-backend)
+missing=()
+for package in "${packages[@]}"; do
+    task_status="$(dpkg-query -W -f='${Status}' "$package" 2>/dev/null || true)"
+    if [ "$task_status" != 'install ok installed' ]; then missing+=("$package"); fi
+done
+if [ "${#missing[@]}" -gt 0 ]; then
+    apt-get update
+    apt-get install -y --no-install-recommends "${missing[@]}"
+fi
+for tool in python3 runuser flock Xvfb openbox x11vnc dbus-run-session openssl; do
+    if ! command -v "$tool" >/dev/null 2>&1; then
+        echo "Missing required runtime tool: $tool" >&2
+        exit 1
+    fi
+done
+python3 -c 'import aiohttp, yaml'
+exit 0

@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>NAS 原生代理</title>
+  <link rel="stylesheet" href="/assets/app.css">
+  <script type="module" src="/assets/app.js"></script>
+</head>
+<body>
+  <section id="login" class="login-shell" aria-labelledby="login-title">
+    <form id="login-form" class="login-card">
+      <div class="app-mark" aria-hidden="true">N</div>
+      <p class="eyebrow">飞牛 · 原生客户端</p>
+      <h1 id="login-title" data-app-title>NAS 原生代理</h1>
+      <p class="muted">登录后打开图形界面、管理网络和更新。</p>
+      <label for="password">访问密码</label>
+      <input id="password" type="password" autocomplete="current-password" required autofocus maxlength="512">
+      <button id="login-submit" class="button primary" type="submit">登录</button>
+      <p id="login-error" class="form-error" role="alert"></p>
+    </form>
+  </section>
+
+  <div id="workspace" class="workspace" hidden>
+    <header class="topbar">
+      <div class="brand"><span class="app-mark small" aria-hidden="true">N</span><div><h1 data-app-title>NAS 原生代理</h1><p>原生桌面客户端</p></div></div>
+      <div class="top-status"><span id="version-chip" class="chip">读取版本…</span><span id="network-chip" class="chip">读取网络状态…</span></div>
+      <button id="logout" class="button quiet">退出</button>
+    </header>
+
+    <main class="layout">
+      <section class="desktop-card" aria-label="客户端图形桌面">
+        <div class="desktop-toolbar"><div><span id="desktop-dot" class="status-dot"></span><span id="desktop-status">正在连接图形桌面</span></div><div class="toolbar-actions"><button id="reconnect" class="button compact">重新连接</button><button id="fullscreen" class="button compact">全屏</button></div></div>
+        <div id="desktop" class="desktop"><div id="desktop-placeholder" class="desktop-placeholder"><div class="spinner"></div><p>正在连接原生客户端…</p><small>桌面准备完成后会自动显示。</small></div></div>
+        <p class="desktop-hint">在上方操作客户端原有图形界面。NAS 网络接管使用右侧开关，客户端内的 TUN 保持关闭。</p>
+      </section>
+
+      <aside class="management" aria-label="应用管理">
+        <section class="management-card">
+          <div class="section-label"><h2>NAS 网络</h2><span id="network-state" class="state-label">未接管</span></div>
+          <p class="muted">按已配置规则接管本机和 Docker 的外网访问；同一时间仅由一个客户端接管。</p>
+          <div class="button-pair"><button id="network-on" class="button primary" data-mutation>启用网络接管</button><button id="network-off" class="button" data-mutation>关闭</button></div>
+          <p id="network-note" class="small-note">局域网和远程管理连接按系统保护规则直连。</p>
+        </section>
+
+        <section class="management-card">
+          <div class="section-label"><h2>上游更新</h2><span id="update-state" class="state-label">未检查</span></div>
+          <p class="muted">下载官方稳定版，更新完整客户端和随附内核，保留节点与设置。</p>
+          <div class="button-pair"><button id="check-update" class="button" data-mutation>检查更新</button><button id="update" class="button primary" data-mutation>一键更新</button></div>
+          <p id="update-note" class="small-note">更新时桌面会短暂断开，完成后自动重连。</p>
+        </section>
+
+        <details class="management-card">
+          <summary><h2>导入节点与配置</h2><span class="fold-mark" aria-hidden="true">＋</span></summary>
+          <form id="import-form" class="details-body">
+            <label for="import-format">内容格式</label>
+            <select id="import-format"><option value="vless">VLESS 链接（每行一条）</option><option value="clash">Clash / Mihomo YAML</option></select>
+            <label for="import-content">配置内容</label>
+            <textarea id="import-content" rows="6" placeholder="在此粘贴节点链接或 YAML 配置" spellcheck="false" autocomplete="off" maxlength="1048576"></textarea>
+            <p class="small-note">内容仅提交给本机应用，不发送到在线转换服务。</p>
+            <button id="import-submit" class="button primary full" data-mutation type="submit">导入并应用</button>
+          </form>
+        </details>
+
+        <details class="management-card">
+          <summary><h2>恢复与维护</h2><span class="fold-mark" aria-hidden="true">＋</span></summary>
+          <div class="details-body"><p class="muted">桌面没有响应时可重启；更新后出现问题时可切回保留的上一版本。</p><div class="button-pair"><button id="restart" class="button" data-mutation>重启客户端</button><button id="rollback" class="button" data-mutation>回滚版本</button></div><dl class="status-list"><div><dt>客户端</dt><dd id="gui-state">—</dd></div><div><dt>最近更新</dt><dd id="last-update">—</dd></div></dl></div>
+        </details>
+        <p id="supervisor-message" class="supervisor-message" role="status"></p>
+      </aside>
+    </main>
+  </div>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>

@@ -1,0 +1,75 @@
+#!/bin/bash
+set -eu
+umask 077
+: "${TRIM_APPDEST:?Missing app destination}"
+: "${TRIM_PKGVAR:?Missing app state}"
+: "${TRIM_USERNAME:?Missing application user}"
+PRIVATE="${TRIM_PKGVAR}/private"
+GUARD="${TRIM_APPDEST}/support/lifecycle_guard.py"
+if [ -L "$PRIVATE" ]; then
+    echo "Unsafe application state directory" >&2
+    exit 1
+fi
+mkdir -p -- "$PRIVATE"
+chown root:root "$PRIVATE"
+chmod 700 "$PRIVATE"
+exec 9>"${PRIVATE}/lifecycle.lock"
+flock -x 9
+
+guard() {
+    python3 "$GUARD" --base "$TRIM_APPDEST" --var "$TRIM_PKGVAR" --user "$TRIM_USERNAME" "$@"
+}
+
+start_app() {
+    if guard status >/dev/null 2>&1; then return 0; fi
+    python3 "${TRIM_APPDEST}/runtime/init_state.py" --base "$TRIM_APPDEST" --var "$TRIM_PKGVAR" --user "$TRIM_USERNAME"
+    nohup python3 "${TRIM_APPDEST}/runtime/supervisor.py" --base "$TRIM_APPDEST" --var "$TRIM_PKGVAR" --user "$TRIM_USERNAME" \
+        >>"${PRIVATE}/supervisor.log" 2>&1 </dev/null 9>&- &
+    task_pid=$!
+    recorded=false
+    for attempt in $(seq 1 25); do
+        if guard --pid "$task_pid" record >/dev/null 2>&1; then recorded=true; break; fi
+        sleep 0.2
+    done
+    if [ "$recorded" != true ]; then
+        echo "Supervisor did not start; see private/supervisor.log" >&2
+        return 1
+    fi
+    for attempt in 1 2 3; do
+        sleep 1
+        if ! guard status >/dev/null 2>&1; then
+            echo "Supervisor stopped during startup; see private/supervisor.log" >&2
+            return 1
+        fi
+    done
+    return 0
+}
+
+stop_app() {
+    if ! guard status >/dev/null 2>&1; then
+        if guard clean; then return 0; fi
+        echo "Previous supervisor exit has no matching successful cleanup receipt; stop/upgrade/uninstall blocked" >&2
+        return 1
+    fi
+    if ! guard signal; then
+        echo "Supervisor identity changed; no signal was sent" >&2
+        return 1
+    fi
+    for attempt in $(seq 1 180); do
+        if ! guard status >/dev/null 2>&1; then
+            if guard clean; then return 0; fi
+            echo "Supervisor exited without successful network/process/IPC cleanup; stop/upgrade/uninstall blocked" >&2
+            return 1
+        fi
+        sleep 1
+    done
+    echo "Supervisor is still stopping; refusing to bypass network cleanup with SIGKILL" >&2
+    return 1
+}
+
+case "${1:-}" in
+    start) start_app ;;
+    stop) stop_app ;;
+    status) if guard status >/dev/null 2>&1; then exit 0; else exit 3; fi ;;
+    *) exit 1 ;;
+esac

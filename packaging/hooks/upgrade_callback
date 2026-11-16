@@ -1,0 +1,4 @@
+#!/bin/bash
+set -eu
+python3 "${TRIM_APPDEST}/runtime/init_state.py" --base "$TRIM_APPDEST" --var "$TRIM_PKGVAR" --user "$TRIM_USERNAME"
+exit 0

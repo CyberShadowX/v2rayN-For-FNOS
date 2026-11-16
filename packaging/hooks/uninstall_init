@@ -1,0 +1,5 @@
+#!/bin/bash
+set -eu
+bash "$(dirname -- "$0")/main" stop
+# Preserve application state by default; fnOS owns the user's uninstall choice.
+exit 0

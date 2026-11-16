@@ -1,0 +1,54 @@
+name: 问题反馈
+description: 反馈安装、界面、网络接管、更新或回滚问题
+title: "[问题] "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        请提供脱敏信息。不要粘贴密码、节点/订阅、访问令牌、私人地址或完整原始日志。
+        1.0.5 为公开预览，请说明你的检查基于本机测试还是 NAS 实机。
+  - type: input
+    id: versions
+    attributes:
+      label: FPK、客户端和网络组件版本
+      description: 分别记录封装版本与上游版本
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: 系统版本与 CPU 架构
+      placeholder: fnOS 版本、Debian 版本、x86_64
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: 发生问题的环节
+      options:
+        - 安装或启动
+        - 网页或图形界面
+        - 节点或客户端本身
+        - NAS 或 Docker 网络接管
+        - 上游更新或回滚
+        - 其他
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤、期望行为与实际结果
+      description: 说明操作入口、接管者和能稳定复现的步骤
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 脱敏错误信息或截图
+      description: 仅提供复现所需片段；先实体遮盖私人数据
+  - type: textarea
+    id: checks
+    attributes:
+      label: 已尝试的检查
+      description: 注明实际执行的检查、跳过项及其结果
