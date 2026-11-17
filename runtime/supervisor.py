@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import pwd
+import re
 import secrets
 import shutil
 import signal
@@ -49,8 +50,10 @@ class Supervisor:
         self.account=pwd.getpwnam(user)
         self.meta=json.loads((self.base/'package.json').read_text())
         self.app=self.meta['app'];self.adapter=importlib.import_module('adapters.'+self.app)
+        from runtime.credentials import recover_pending
+        recover_pending(self.var,self.app)
         self.ui=self.var/'ui';self.profile=self.var/'p';self.private=self.var/'private'
-        self.lock=threading.RLock();self.processes={};self.network=None;self.updating=False;self.closing=threading.Event();self.message='原生应用已启动';self.last_update=None
+        self.lock=threading.RLock();self.processes={};self.network=None;self.updating=False;self.closing=threading.Event();self.message='原生应用已启动';self.last_update=None;self.network_operation=None
         self.current_file=self.private/'current.json'
         transaction=self.private/'transaction.json'
         if transaction.exists():
@@ -151,10 +154,16 @@ class Supervisor:
             gui=(Path(f'/proc/{pid}').stat().st_uid==self.account.pw_uid and executable==Path(self.adapter.launch_command(self.current['path'],self.profile)[0]).resolve())
         except (OSError,ValueError):pass
         ns=self.network_controller().status()
+        phase=getattr(self,'network_operation',None) or ns.get('phase','unknown')
         owner=ns.get('owner',ns.get('network_owner')) if (ns.get('active') or ns.get('needs_recovery') or ns.get('phase')=='starting') else None
+        message=self.message
+        if owner and owner!=self.app and ('直连已恢复' in message or message=='本机与 Docker 网络接管已启动'):
+            message='当前由 '+('v2rayN' if owner=='v2rayn' else 'Clash Verge Rev')+' 接管网络，本应用保持待命'
         return {'app':self.app,'title':self.meta['title'],'version':self.current['version'],'gui_running':gui,
                 'network_active':bool(ns.get('running',ns.get('active',False)) and ns.get('owned',owner==self.app)),'network_owner':owner,
-                'updating':self.updating,'message':self.message,'last_update':self.last_update}
+                'network_phase':phase,'network_cleanup_verified':bool(ns.get('cleanup_verified',False)),
+                'network_needs_recovery':bool(ns.get('needs_recovery',False)),'network_error':ns.get('last_error'),
+                'updating':self.updating,'message':message,'last_update':self.last_update}
 
     def network_controller(self):
         from runtime.network import NetworkController
@@ -181,13 +190,24 @@ class Supervisor:
         if state.get('active') and state.get('owned'):return self.status()
         # A second client may have been installed since this process started.
         # Rebuild an inactive controller so both current GUI UIDs are excluded.
-        self.network=None
-        result=self.network_controller().start();atom_json(self.private/'network-enabled.json',{'enabled':True});self.message='本机与 Docker 网络接管已启动';return result or self.status()
+        self.network_operation='starting'
+        try:
+            self.network=None
+            self.network_controller().start()
+            atom_json(self.private/'network-enabled.json',{'enabled':True})
+            self.message='本机与 Docker 网络接管已启动'
+        finally:self.network_operation=None
+        return self.status()
 
     def network_off(self,preserve=False):
-        if self.network and self.network.status().get('owned'):self.network.stop()
-        if not preserve:atom_json(self.private/'network-enabled.json',{'enabled':False})
-        self.message='本应用的网络接管已关闭';return self.status()
+        self.network_operation='stopping'
+        try:
+            controller=self.network_controller()
+            if controller.status().get('owned'):controller.stop()
+            if not preserve:atom_json(self.private/'network-enabled.json',{'enabled':False})
+            self.message='本应用的网络接管已关闭'
+        finally:self.network_operation=None
+        return self.status()
 
     def check_update(self):
         from adapters import mihomo
@@ -304,15 +324,25 @@ class Supervisor:
     def import_nodes(self,request):
         content=request.get('content','')
         if not isinstance(content,str) or not 0<len(content.encode())<=1024*1024:raise ValueError('导入内容为空或超过限制')
+        fmt=request.get('format','share-links' if self.app=='v2rayn' else 'clash')
         if self.app=='v2rayn':
+            if fmt not in ('share-links','vless'):raise ValueError('此客户端需要节点分享链接，请在原版客户端中导入其他配置格式')
+            links=[line.strip() for line in content.splitlines() if line.strip()]
+            if not links or any(not re.match(r'^[A-Za-z][A-Za-z0-9+.-]*://\S',line) for line in links):
+                raise ValueError('请填写节点分享链接，每行一条；不要在此粘贴 YAML 配置')
             self.as_user(['xclip','-selection','clipboard'],input=content.encode(),stdout=subprocess.DEVNULL)
             p=self.as_user(['xdotool','search','--name','v2rayN'],capture_output=True,text=True)
             window=p.stdout.splitlines()[0]
             self.as_user(['xdotool','windowactivate','--sync',window])
             self.as_user(['xdotool','key','--clearmodifiers','ctrl+v'])
-            self.message='节点已发送至 v2rayN 剪贴板导入，请在原生窗口确认';return self.status()
+            self.message='节点链接已发送至 v2rayN，请在原版窗口确认导入结果';return {**self.status(),'format':'share-links'}
+        if fmt!='clash':raise ValueError('此客户端需要 Clash / Mihomo YAML 配置')
         import yaml
-        data=yaml.safe_load(content)
+        try:data=yaml.safe_load(content)
+        except yaml.YAMLError as error:
+            mark=getattr(error,'problem_mark',None)
+            location=f'（第 {mark.line+1} 行）' if mark is not None else ''
+            raise ValueError('YAML 配置格式不正确'+location+'，请检查缩进和内容') from None
         if not isinstance(data,dict) or not isinstance(data.get('proxies'),list):raise ValueError('需要含 proxies 列表的 Mihomo YAML 配置')
         selected={k:data[k] for k in ('proxies','proxy-groups','rules','proxy-providers','rule-providers') if k in data}
         selected.update({'mixed-port':self.meta['socks_port'],'allow-lan':False,'tun':{'enable':False}})
@@ -332,6 +362,9 @@ class Supervisor:
         with self.lock:
             if self.closing.is_set():raise ValueError('应用正在停止')
             if self.updating:raise ValueError('更新进行中，请稍后操作')
+            if action=='change_password':
+                from runtime.credentials import change_password
+                return change_password(self.var,self.app,request.get('current_password'),request.get('new_password'),expected_revision=request.get('expected_revision'))
             if action=='update':
                 self.updating=True;threading.Thread(target=self.update_job,args=(bool(request.get('force',False)),)).start();return {'updating':True,'message':'已开始更新'}
             if action=='restart':
@@ -370,6 +403,8 @@ class Supervisor:
             result=self.network_controller().maintain()
             if result.get('phase')=='error':
                 self.message=('网络接管已停止，直连已恢复：' if result.get('cleanup_verified') else '网络恢复未完成：')+str(result.get('last_error',''))[:150]
+            elif result.get('recovered') and result.get('cleanup_verified'):
+                self.message='网络接管已停止，直连已恢复'
         except Exception as error:self.message='网络恢复未完成：'+str(error)[:180]
         finally:self.lock.release()
 

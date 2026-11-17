@@ -13,18 +13,25 @@ import json
 from pathlib import Path
 import secrets
 import ssl
+import sys
 import time
 from urllib.parse import urlsplit
 
 from aiohttp import WSMsgType, web
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from runtime.credentials import (CredentialError, credential_revision, read_portal_config,
+                                 validate_current_password, validate_new_password)
+
 SESSION_SECONDS = 8 * 60 * 60
 MAX_IMPORT_BYTES = 1024 * 1024
 MAX_CONTROL_REPLY = 128 * 1024
 WEB_ROOT = Path(__file__).resolve().parent.parent / "web"
+ICON_ROOT = WEB_ROOT.parent / "ui" / "images"
 NOVNC_ROOT = Path("/usr/share/novnc")
 PUBLIC_STATUS = frozenset({"app", "title", "version", "gui_running", "network_active",
-                           "network_owner", "updating", "last_update", "message"})
+                           "network_owner", "updating", "last_update", "message", "network_phase",
+                           "network_cleanup_verified", "network_needs_recovery", "network_error"})
 ACTIONS = frozenset({"check_update", "update", "restart", "network_on", "network_off",
                      "rollback", "import"})
 ALLOWED_PEERS = tuple(ipaddress.ip_network(value) for value in (
@@ -47,7 +54,7 @@ class SupervisorError(Exception):
 class Portal:
     def __init__(self, state: Path, title: str, vnc_port: int):
         self.state = state.resolve()
-        config = json.loads((self.state / "portal.json").read_text(encoding="utf-8"))
+        config = read_portal_config(self.state / "portal.json")
         self.app_id = config["app"]
         if self.app_id not in {"v2rayn", "clash"}:
             raise ValueError("Unknown native application")
@@ -67,7 +74,32 @@ class Portal:
         self.sessions: dict[str, Session] = {}
         self.attempts: dict[str, deque] = defaultdict(deque)
         self.hash_slots = asyncio.Semaphore(2)
+        self.auth_lock = asyncio.Lock()
+        self.password_lock = asyncio.Lock()
+        self.password_attempts: deque = deque()
+        self.auth_revision = credential_revision(config)
         self.vnc_connections = 0
+
+    async def sync_credentials(self):
+        """Root resets take effect without restarting the desktop or networking."""
+        async with self.auth_lock:
+            try:
+                config = await asyncio.to_thread(read_portal_config, self.state / "portal.json", self.app_id)
+            except CredentialError:
+                await self.drop_all_sessions()
+                raise
+            revision = credential_revision(config)
+            if revision != self.auth_revision or config["vnc_password"] != self.vnc_password:
+                self.salt = bytes.fromhex(config["password_salt"])
+                self.password_hash = bytes.fromhex(config["password_hash"])
+                self.vnc_password = config["vnc_password"]
+                self.auth_revision = revision
+                await self.drop_all_sessions()
+                self.attempts.clear()
+                self.password_attempts.clear()
+
+    async def drop_all_sessions(self):
+        await asyncio.gather(*(self.drop_session(token) for token in list(self.sessions)))
 
     def session(self, request: web.Request) -> Session | None:
         token = request.cookies.get(self.cookie_name, "")
@@ -154,6 +186,7 @@ class Portal:
 
     async def login(self, request: web.Request) -> web.Response:
         self.require_origin(request)
+        await self.sync_credentials()
         peer = request.remote or "unknown"
         now = time.monotonic()
         # Bound dictionary growth even when untrusted peers rotate addresses.
@@ -182,16 +215,26 @@ class Portal:
         if self.hash_slots.locked():
             return web.json_response({"error": "正在处理其他登录，请稍后重试"}, status=429,
                                      headers={"Retry-After": "2"})
+        revision = self.auth_revision
         async with self.hash_slots:
             candidate = await asyncio.to_thread(hashlib.scrypt, password.encode("utf-8"),
                                                  salt=self.salt, n=16384, r=8, p=1, dklen=32)
+        await self.sync_credentials()
+        if self.auth_revision != revision:
+            return web.json_response({"error": "访问密码已变更，请重新登录"}, status=401)
         if not hmac.compare_digest(candidate, self.password_hash):
             return web.json_response({"error": "访问密码不正确"}, status=401)
+        previous = request.cookies.get(self.cookie_name, "")
+        await self.drop_session(previous)
+        # A slow VNC close yields to password resets and credential refreshes.
+        # Verify again after that last external wait. From this revision/hash
+        # check through session publication there must be no further await.
+        await self.sync_credentials()
+        if self.auth_revision != revision or not hmac.compare_digest(candidate, self.password_hash):
+            return web.json_response({"error": "访问密码已变更，请重新登录"}, status=401)
         self.attempts.pop(peer, None)
         if len(self.sessions) >= 64:
             return web.json_response({"error": "登录会话较多，请关闭不用的页面后再试"}, status=429)
-        previous = request.cookies.get(self.cookie_name, "")
-        await self.drop_session(previous)
         token = secrets.token_urlsafe(32)
         session = Session(csrf=secrets.token_urlsafe(32), expires=now + SESSION_SECONDS)
         self.sessions[token] = session
@@ -205,13 +248,66 @@ class Portal:
         session = self.sessions.pop(token, None)
         if session:
             for socket in list(session.sockets):
-                await socket.close(code=1008, message=b"Session ended")
+                with suppress(OSError, ConnectionError, RuntimeError, asyncio.TimeoutError):
+                    await asyncio.wait_for(socket.close(code=1008, message=b"Session ended"), timeout=2)
+
+    async def change_password(self, request: web.Request) -> web.Response:
+        self.require_mutation(request)
+        if request.content_length is not None and request.content_length > 4096:
+            return web.json_response({"error": "密码请求过长"}, status=400)
+        try:
+            raw = bytearray()
+            async for chunk in request.content.iter_chunked(1024):
+                raw.extend(chunk)
+                if len(raw) > 4096:
+                    raise CredentialError("密码请求过长")
+            body = json.loads(raw)
+            if not isinstance(body, dict) or set(body) != {"current_password", "new_password", "confirm_password"}:
+                raise CredentialError("请填写当前密码、新密码及确认密码")
+            current = validate_current_password(body["current_password"])
+            new_password = validate_new_password(body["new_password"])
+            if new_password != body["confirm_password"]:
+                raise CredentialError("两次输入的新密码不一致")
+        except (CredentialError, ValueError, UnicodeError) as error:
+            message = str(error) if isinstance(error, CredentialError) else "请填写当前密码、新密码及确认密码"
+            return web.json_response({"error": message}, status=400)
+        if self.password_lock.locked():
+            return web.json_response({"error": "另一个密码操作正在进行，请稍后重试"}, status=409)
+        async with self.password_lock:
+            await self.sync_credentials()
+            self.require_mutation(request)
+            now = time.monotonic()
+            while self.password_attempts and self.password_attempts[0] <= now - 300:
+                self.password_attempts.popleft()
+            if len(self.password_attempts) >= 5:
+                return web.json_response({"error": "密码修改尝试较多，请五分钟后重试"}, status=429,
+                                         headers={"Retry-After": "300"})
+            self.password_attempts.append(now)
+            previous = self.auth_revision
+            try:
+                result = await self.supervisor("change_password", timeout=30, current_password=current,
+                                               new_password=new_password, expected_revision=previous)
+            finally:
+                # Even an interrupted response may have committed a reset.
+                await self.sync_credentials()
+            if result.get("ok") is not True or self.auth_revision == previous:
+                raise SupervisorError("密码服务尚未确认修改，请重新核对登录状态")
+            response = web.json_response({"ok": True, "reauthenticate": True})
+            # Debian 12 ships aiohttp 3.8, whose del_cookie only accepts path
+            # and domain. Expire with set_cookie to retain our security flags
+            # across supported aiohttp versions.
+            response.set_cookie(self.cookie_name, "", max_age=0,
+                                expires="Thu, 01 Jan 1970 00:00:00 GMT", path="/",
+                                secure=True, httponly=True, samesite="Strict")
+            return response
 
     async def logout(self, request: web.Request) -> web.Response:
         self.require_mutation(request)
         await self.drop_session(request.cookies.get(self.cookie_name, ""))
         response = web.json_response({"ok": True})
-        response.del_cookie(self.cookie_name, path="/", secure=True, httponly=True, samesite="Strict")
+        response.set_cookie(self.cookie_name, "", max_age=0,
+                            expires="Thu, 01 Jan 1970 00:00:00 GMT", path="/",
+                            secure=True, httponly=True, samesite="Strict")
         return response
 
     async def session_info(self, request: web.Request) -> web.Response:
@@ -238,16 +334,18 @@ class Portal:
                 content, fmt = body.get("content"), body.get("format")
                 if (not isinstance(content, str) or not content.strip()
                         or len(content.encode("utf-8")) > MAX_IMPORT_BYTES
-                        or not isinstance(fmt, str) or fmt not in {"vless", "clash"}):
+                        or not isinstance(fmt, str)
+                        or fmt not in ({"share-links", "vless"} if self.app_id == "v2rayn" else {"clash"})):
                     raise ValueError("Invalid import")
-                arguments = {"content": content, "format": fmt}
+                arguments = {"content": content, "format": "share-links" if fmt == "vless" else fmt}
             except (ValueError, AttributeError, UnicodeError):
                 return web.json_response({"error": "请选择导入格式并填写内容，最多 1 MiB"}, status=400)
         result = await self.supervisor(action, timeout=90 if action == "check_update" else 1200, **arguments)
         # Supervisor replies are fixed metadata, never a config dump or credentials.
         permitted = {"ok", "message", "current", "latest", "available", "version", "updating",
                      "last_update", "network_active", "network_owner", "count", "imported", "format", "job",
-                     "network_available", "network_current", "network_latest"}
+                     "network_available", "network_current", "network_latest", "network_phase",
+                     "network_cleanup_verified", "network_needs_recovery", "network_error"}
         return web.json_response({key: value for key, value in result.items() if key in permitted})
 
     async def vnc(self, request: web.Request) -> web.StreamResponse:
@@ -268,6 +366,19 @@ class Portal:
             if self.session(request) is not session:
                 return web.json_response({"error": "登录已过期，请重新登录"}, status=401)
             await socket.prepare(request)
+            # Reset/logout can remove the session while the WebSocket handshake
+            # is pending, before its socket can be closed. Recheck after that
+            # wait; no further await may precede starting the relay tasks.
+            try:
+                await self.sync_credentials()
+            except CredentialError:
+                current_session = False
+            else:
+                current_session = self.session(request) is session
+            if not current_session:
+                with suppress(OSError, ConnectionError, asyncio.TimeoutError):
+                    await asyncio.wait_for(socket.close(code=1008, message=b"Session ended"), timeout=2)
+                return socket
 
             async def tcp_to_web():
                 while chunk := await reader.read(64 * 1024):
@@ -302,7 +413,8 @@ class Portal:
             writer.close()
             with suppress(OSError, ConnectionError):
                 await writer.wait_closed()
-            await socket.close()
+            with suppress(OSError, ConnectionError, RuntimeError):
+                await socket.close()
         return socket
 
     async def novnc_asset(self, request: web.Request) -> web.FileResponse:
@@ -320,7 +432,9 @@ class Portal:
     async def expire_sessions(self, app):
         async def sweep():
             while True:
-                await asyncio.sleep(30)
+                await asyncio.sleep(2)
+                with suppress(CredentialError):
+                    await self.sync_credentials()
                 for token, session in list(self.sessions.items()):
                     if session.expires <= time.monotonic():
                         await self.drop_session(token)
@@ -339,7 +453,11 @@ async def errors_and_headers(request: web.Request, handler):
         if not Portal.allowed_peer(request):
             raise web.HTTPForbidden(text=json.dumps({"error": "仅允许局域网与 Tailscale 访问"}),
                                     content_type="application/json")
+        if request.path.startswith("/api/") or request.path == "/vnc":
+            await request.app["portal"].sync_credentials()
         response = await handler(request)
+    except CredentialError:
+        response = web.json_response({"error": "访问凭据暂不可用，请联系 NAS 管理员"}, status=503)
     except SupervisorError as exc:
         response = web.json_response({"error": str(exc)}, status=409)
     except web.HTTPException as exc:
@@ -368,16 +486,27 @@ def create_app(state: Path, title: str, vnc_port: int) -> web.Application:
 
     async def asset(request):
         name = request.match_info["name"]
+        icons = {"icon-64.png": "icon_64.png", "icon-256.png": "icon_256.png"}
+        if name in icons:
+            path = ICON_ROOT / icons[name]
+            if path.is_symlink() or not path.is_file():
+                raise web.HTTPNotFound()
+            return web.FileResponse(path)
         if name not in {"app.css", "app.js"}:
             raise web.HTTPNotFound()
         return web.FileResponse(WEB_ROOT / name)
 
+    async def help_page(request):
+        return web.FileResponse(WEB_ROOT / "help.html")
+
     app.router.add_get("/", index)
     app.router.add_get("/assets/{name}", asset)
+    app.router.add_get("/help", help_page)
     app.router.add_post("/api/login", portal.login)
     app.router.add_post("/api/logout", portal.logout)
     app.router.add_get("/api/session", portal.session_info)
     app.router.add_get("/api/status", portal.status)
+    app.router.add_post("/api/password", portal.change_password)
     app.router.add_post("/api/{action}", portal.action)
     app.router.add_get("/vnc", portal.vnc)
     app.router.add_get("/novnc/{tail:.*}", portal.novnc_asset)

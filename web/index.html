@@ -5,28 +5,32 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="color-scheme" content="light">
   <title>NAS 原生代理</title>
+  <link rel="icon" type="image/png" sizes="64x64" href="/assets/icon-64.png">
+  <link rel="apple-touch-icon" href="/assets/icon-256.png">
   <link rel="stylesheet" href="/assets/app.css">
   <script type="module" src="/assets/app.js"></script>
 </head>
 <body>
   <section id="login" class="login-shell" aria-labelledby="login-title">
     <form id="login-form" class="login-card">
-      <div class="app-mark" aria-hidden="true">N</div>
+      <img class="app-mark" src="/assets/icon-256.png" alt="" width="48" height="48">
       <p class="eyebrow">飞牛 · 原生客户端</p>
       <h1 id="login-title" data-app-title>NAS 原生代理</h1>
       <p class="muted">登录后打开图形界面、管理网络和更新。</p>
       <label for="password">访问密码</label>
-      <input id="password" type="password" autocomplete="current-password" required autofocus maxlength="512">
+      <input id="password" type="password" autocomplete="current-password" required autofocus maxlength="2048">
       <button id="login-submit" class="button primary" type="submit">登录</button>
+      <p id="login-notice" class="login-notice" role="status"></p>
       <p id="login-error" class="form-error" role="alert"></p>
+      <a class="help-link" href="/help" target="_blank" rel="noopener">使用说明与密码帮助</a>
     </form>
   </section>
 
   <div id="workspace" class="workspace" hidden>
     <header class="topbar">
-      <div class="brand"><span class="app-mark small" aria-hidden="true">N</span><div><h1 data-app-title>NAS 原生代理</h1><p>原生桌面客户端</p></div></div>
+      <div class="brand"><img class="app-mark small" src="/assets/icon-64.png" alt="" width="38" height="38"><div><h1 data-app-title>NAS 原生代理</h1><p>原生桌面客户端</p></div></div>
       <div class="top-status"><span id="version-chip" class="chip">读取版本…</span><span id="network-chip" class="chip">读取网络状态…</span></div>
-      <button id="logout" class="button quiet">退出</button>
+      <nav class="top-actions" aria-label="页面操作"><a class="button quiet" href="/help" target="_blank" rel="noopener">使用说明</a><button id="logout" class="button quiet">退出</button></nav>
     </header>
 
     <main class="layout">
@@ -38,10 +42,14 @@
 
       <aside class="management" aria-label="应用管理">
         <section class="management-card">
-          <div class="section-label"><h2>NAS 网络</h2><span id="network-state" class="state-label">未接管</span></div>
+          <div class="section-label"><h2>NAS 网络</h2><span id="network-state" class="state-label" role="status" aria-live="polite">正在读取…</span></div>
           <p class="muted">按已配置规则接管本机和 Docker 的外网访问；同一时间仅由一个客户端接管。</p>
-          <div class="button-pair"><button id="network-on" class="button primary" data-mutation>启用网络接管</button><button id="network-off" class="button" data-mutation>关闭</button></div>
+          <div class="network-control">
+            <div><span id="network-control-label" class="control-label">网络接管</span><p id="network-control-hint" class="control-hint">正在确认实际状态</p></div>
+            <button id="network-toggle" class="network-switch is-unknown" type="button" role="switch" aria-checked="false" aria-label="网络接管，状态待确认" aria-describedby="network-control-hint network-note" aria-busy="false" data-mutation disabled><span class="switch-track" aria-hidden="true"><span class="switch-thumb"><span class="switch-progress"></span></span></span></button>
+          </div>
           <p id="network-note" class="small-note">局域网和远程管理连接按系统保护规则直连。</p>
+          <button id="status-refresh" class="button compact status-refresh" type="button">重新确认状态</button>
         </section>
 
         <section class="management-card">
@@ -55,11 +63,29 @@
           <summary><h2>导入节点与配置</h2><span class="fold-mark" aria-hidden="true">＋</span></summary>
           <form id="import-form" class="details-body">
             <label for="import-format">内容格式</label>
-            <select id="import-format"><option value="vless">VLESS 链接（每行一条）</option><option value="clash">Clash / Mihomo YAML</option></select>
+            <select id="import-format" aria-describedby="import-format-note"><option value="">正在读取客户端…</option></select>
+            <p id="import-format-note" class="small-note">读取客户端后显示可用的导入格式。</p>
             <label for="import-content">配置内容</label>
             <textarea id="import-content" rows="6" placeholder="在此粘贴节点链接或 YAML 配置" spellcheck="false" autocomplete="off" maxlength="1048576"></textarea>
             <p class="small-note">内容仅提交给本机应用，不发送到在线转换服务。</p>
-            <button id="import-submit" class="button primary full" data-mutation type="submit">导入并应用</button>
+            <p id="import-error" class="form-error" role="alert"></p>
+            <button id="import-submit" class="button primary full" data-mutation type="submit">发送至客户端</button>
+          </form>
+        </details>
+        <details id="access-settings" class="management-card">
+          <summary><h2>访问与安全</h2><span class="fold-mark" aria-hidden="true">＋</span></summary>
+          <form id="password-form" class="details-body">
+            <p class="muted">这里修改本应用的网页登录密码，与 NAS 账号密码不同；两个应用各自独立。</p>
+            <label for="current-password">当前访问密码</label>
+            <input id="current-password" type="password" autocomplete="current-password" required maxlength="2048">
+            <label for="new-password">新访问密码</label>
+            <input id="new-password" type="password" autocomplete="new-password" required maxlength="512" aria-describedby="password-rules">
+            <label for="confirm-password">确认新密码</label>
+            <input id="confirm-password" type="password" autocomplete="new-password" required maxlength="512">
+            <p id="password-rules" class="small-note">12–128 个字符，最多 512 UTF-8 字节；支持中文与空格。请保存到自己的密码管理器。修改后本应用需重新登录。</p>
+            <p id="password-error" class="form-error" role="alert"></p>
+            <button id="password-submit" class="button primary full" data-mutation type="submit">修改访问密码</button>
+            <p class="small-note">忘记密码时请由 NAS 管理员处理，<a href="/help#access" target="_blank" rel="noopener">查看密码读取与重置说明</a>。</p>
           </form>
         </details>
 

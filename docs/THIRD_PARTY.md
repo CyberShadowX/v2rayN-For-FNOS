@@ -24,11 +24,11 @@ NAS 的图形环境和网页桌面依赖来自安装者已配置的 Debian 软�
 
 ## 项目素材
 
-本仓库的头图为项目自制 SVG 示意图。界面图片来自历史原生界面记录，私人配置与日志已作不透明遮盖，保留上游界面中的名称和标识以说明实际使用的软件；这些名称与标识的权利归各自权利人。
+本仓库的头图为项目自制 SVG 示意图。界面图片用于展示实际原生客户端与封装页面，私人配置与日志作不透明遮盖；具体图像与版本来源记录于验证说明，保留上游界面中的名称和标识以说明实际使用的软件；这些名称与标识的权利归各自权利人。
 
 ## 本版源码附件
 
-[对应源码压缩包](https://github.com/CyberShadowX/v2rayN-For-FNOS/releases/download/v1.0.5/v2rayN-For-FNOS-1.0.5-corresponding-source.tar.gz) 包含 `wrapper/` 封装源码和 `upstream/` 固定源码归档；[来源清单](../SOURCES.json) 记录各归档来源、字节数与 SHA-256。压缩包内含上游的构建脚本、依赖清单和许可，封装构建方法见 [BUILD.md](BUILD.md)。这是来源可核对的发布材料，不承诺第三方现成发行包可逐字节复现。
+[对应源码压缩包](https://github.com/CyberShadowX/v2rayN-For-FNOS/releases/download/v1.0.6/v2rayN-For-FNOS-1.0.6-corresponding-source.tar.gz) 包含 `wrapper/` 封装源码和 `upstream/` 固定源码归档；[来源清单](../SOURCES.json) 记录各归档来源、字节数与 SHA-256。压缩包内含上游的构建脚本、依赖清单和许可，封装构建方法见 [BUILD.md](BUILD.md)。这是来源可核对的发布材料，不承诺第三方现成发行包可逐字节复现。
 
 随包 Xray 的内置版本为 26.10.10，构建标识为 `701af60`，对应[官方完整提交](https://github.com/XTLS/Xray-core/commit/701af60772cda123492f86e383e1fdba066614a9)；使用该提交源码归档，避免依赖当前不可访问的版本标签。随包 sing-box 与 Mihomo 的提交由 Go 构建信息记录。
 

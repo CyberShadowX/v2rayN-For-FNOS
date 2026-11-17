@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>使用说明 · 飞牛原生代理</title>
+  <link rel="icon" type="image/png" sizes="64x64" href="/assets/icon-64.png">
+  <link rel="stylesheet" href="/assets/app.css">
+  <style>
+    .guide{max-width:960px;margin:0 auto;padding:28px 24px 64px;line-height:1.85}
+    .guide-header{display:flex;align-items:center;gap:14px;margin-bottom:24px}
+    .guide h1{font-size:26px}.guide h2{font-size:19px;margin:31px 0 12px}
+    .guide p,.guide ul,.guide ol{margin:12px 0}.guide a{color:#2858b8}
+    .guide-nav{display:flex;flex-wrap:wrap;gap:8px 18px;margin:18px 0 28px;font-size:14px}
+    .guide-card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:8px 24px 20px;margin-top:18px}
+    .guide-table{width:100%;border-collapse:collapse;background:#fff;font-size:14px}
+    .guide-table th,.guide-table td{padding:11px;text-align:left;border:1px solid var(--line);vertical-align:top}
+    .guide-table th{background:#f6f8fb}.guide code{background:#edf1f7;padding:2px 5px;border-radius:4px;overflow-wrap:anywhere}
+    .guide pre{white-space:pre-wrap;overflow-wrap:anywhere;padding:15px;background:#edf1f7;border-radius:8px;font-size:13px}
+    .guide pre code{padding:0}.guide .hint{color:#53677f;font-size:13px}
+    @media(max-width:600px){.guide{padding:20px 14px 44px}.guide h1{font-size:23px}.guide-card{padding:5px 14px 16px}.guide-table{font-size:12px}.guide-table th,.guide-table td{padding:8px}}
+  </style>
+</head>
+<body>
+  <main class="guide">
+    <header class="guide-header"><img class="app-mark" src="/assets/icon-256.png" width="48" height="48" alt=""><div><h1>使用说明</h1><p class="hint">飞牛封装 1.0.6 · 本页随安装包提供，可离线阅读</p></div></header>
+    <p><a href="/">返回应用</a></p>
+    <nav class="guide-nav" aria-label="说明目录"><a href="#modes">日常设置</a><a href="#network">网络开关与切换</a><a href="#import">导入配置</a><a href="#updates">更新与回滚</a><a href="#access">访问密码</a><a href="#recovery">恢复与反馈</a></nav>
+
+    <section id="modes" class="guide-card">
+      <h2>日常设置：由右侧 NAS 网络统一接管</h2>
+      <table class="guide-table"><thead><tr><th>设置</th><th>v2rayN</th><th>Clash Verge Rev</th></tr></thead><tbody>
+        <tr><td>客户端内置 TUN／虚拟网卡</td><td>关闭</td><td>关闭</td></tr>
+        <tr><td>客户端系统代理</td><td>不改变系统代理</td><td>关闭</td></tr>
+        <tr><td>客户端路由／模式</td><td>V4—绕过大陆（Whitelist）</td><td>规则模式（Rule）</td></tr>
+        <tr><td>右侧 NAS 网络</td><td colspan="2">选择并激活可用节点后按需开启；两个应用只能由一个持有接管</td></tr>
+      </tbody></table>
+      <p>右侧开启 NAS 网络时，封装的独立原生 TUN 组件把需接管的 NAS 本机与 Docker 流量交给客户端，再由客户端的规则决定直连或走节点。客户端自己的 TUN 保持关闭，这条链路仍可工作。</p>
+      <p><strong>TUN 决定如何接管流量，路由规则决定流量怎么出去。</strong>开启 TUN 不等于所有网站都走远端节点。V4 是路由规则版本，与 IPv4／IPv6 开关不同。</p>
+      <p>如果此前在 NAS 的 v2rayN 中选过“自动配置系统代理”，先选一次“清除系统代理”，再切到“不改变系统代理”。“不改变”不会自动清掉旧设置。Windows 电脑原先的“自动配置系统代理＋V4 绕过大陆”可以继续保持。</p>
+      <p>Clash 的直连和代理策略取决于配置中的 <code>rules</code>。只导入节点列表，不一定就有完整的大陆绕过规则。</p>
+    </section>
+
+    <section id="network" class="guide-card">
+      <h2>开关、状态与两客户端切换</h2>
+      <ul>
+        <li><strong>未启用：</strong>灰色、圆点在左；启用前先确认客户端节点可用。</li>
+        <li><strong>已启用：</strong>蓝色、圆点在右；开关可再次点击关闭。</li>
+        <li><strong>正在启用／关闭：</strong>等待后台确认后再操作。</li>
+        <li><strong>状态待确认／待恢复：</strong>先看提示并重新读取状态，不凭颜色判断已经恢复直连。</li>
+        <li><strong>其他客户端接管：</strong>先去对应客户端关闭 NAS 网络，再切换到当前客户端。</li>
+      </ul>
+      <p>刷新页面会读取后台的实际状态。原版图形桌面已连接，与 NAS 网络是否接管，是两项独立状态。</p>
+      <ol><li>在当前持有接管的应用中关闭“NAS 网络”，等待后台确认退出。</li><li>在另一客户端选择并激活节点。</li><li>开启另一客户端的 NAS 网络，核对本机、需要使用代理的容器和管理连接。</li></ol>
+      <p>临时恢复系统原有联网方式时，关闭 NAS 网络。已经手动配置代理的应用需另行处理。局域网与可信远程管理相关流量由封装的绕过与管理路径检查保护。</p>
+      <p>只让指定程序或容器使用代理时，可以关闭统一接管，再为它们显式配置代理。默认客户端代理监听 NAS 回环地址；普通容器中的 <code>127.0.0.1</code> 指向容器自身，容器可访问的独立代理入口需另行配置并限制访问范围。</p>
+    </section>
+
+    <section id="import" class="guide-card">
+      <h2>导入节点与配置</h2>
+      <p><strong>v2rayN：</strong>选择“节点分享链接（每行一条）”，粘贴 VMess、VLESS、Trojan、Shadowsocks 等原版客户端支持的链接。内容会交给原版客户端处理，请按原版窗口的结果确认导入。</p>
+      <p><strong>Clash Verge Rev：</strong>选择“Clash / Mihomo YAML”，导入含 <code>proxies</code> 列表的配置，可按需包含 <code>proxy-groups</code>、<code>rules</code> 等内容。YAML 可以描述多种协议，不代表只能使用某一种节点。</p>
+      <p>网页导入只提交给本 NAS 应用，不发送到在线转换服务。具体协议和参数组合以原版客户端及内核支持为准。</p>
+    </section>
+
+    <section id="updates" class="guide-card">
+      <h2>两种更新与回滚</h2>
+      <table class="guide-table"><thead><tr><th>操作</th><th>范围</th></tr></thead><tbody>
+        <tr><td>右侧“检查更新／一键更新”</td><td>官方稳定客户端整包、随附内核和资源、独立网络组件</td></tr>
+        <tr><td>飞牛应用中心安装新 FPK</td><td>右侧网页、密码管理、网络管理、适配及安装生命周期等封装功能</td></tr>
+        <tr><td>“回滚版本”</td><td>恢复保留的程序、网络组件及对应配置快照</td></tr>
+      </tbody></table>
+      <p>上游更新不会改变 FPK 封装版本号；网页的新功能需新版 FPK。使用封装更新入口，让程序切换、配置快照和恢复流程配合。更新期间桌面与代理连接可能短暂中断。</p>
+      <p>回滚前先单独保存更新后仍想保留的配置变更。完成后核对界面版本、节点、网络接管及本机和容器访问。</p>
+    </section>
+
+    <section id="access" class="guide-card">
+      <h2>访问密码：读取、保存、修改和重置</h2>
+      <p>两个应用各自使用独立的网页登录密码，它与 NAS 管理账号、SSH、节点和订阅密码不同。首次安装在本设备生成随机密码及自签名证书；核对自己的 NAS 地址后再处理浏览器证书提示。</p>
+      <p>初始访问资料在本应用 <code>var/private/access.txt</code>，由 NAS 管理员读取。请确认本应用的数据目录，再在 NAS 终端中执行：</p>
+      <pre><code>sudo cat '&lt;应用数据目录&gt;/private/access.txt'</code></pre>
+      <p>该文件包含访问口令，权限为 root 专用 <code>0600</code>，私有目录为 <code>0700</code>。请将两个应用分别保存到自己的密码管理器；浏览器也可以保存密码。修改后同步更新保存记录，不上传访问文件、私钥或完整运行配置。</p>
+      <ol><li>登录对应应用，打开“访问与安全”。</li><li>填入当前密码、新密码和确认新密码，点击“修改访问密码”。</li><li>成功后，本应用的旧网页登录与远程桌面会话失效，使用新密码登录；另一个应用不受影响。</li></ol>
+      <p>新密码为 <strong>12–128 个字符，最多 512 UTF-8 字节</strong>，支持中文和空格，不接受控制字符或与旧密码相同的新密码。密码中的空格会保留。升级保留已有密码，包括原先较短的密码。</p>
+      <p>忘记密码时，先由管理员读取本应用的访问记录。若需要重置，确认应用安装目录、数据目录和应用类型，使用随包工具：</p>
+      <pre><code>sudo python3 '&lt;应用安装目录&gt;/tools/reset_portal_password.py' --app v2rayn --var '&lt;应用数据目录&gt;'</code></pre>
+      <p>Clash Verge Rev 使用 <code>--app clash</code>。工具默认交互输入两次新密码，不把密码放进命令行参数。管理员重置只影响本应用的网页登录；节点、订阅、原版客户端配置和 TLS 证书保留，管理员访问记录同时更新。</p>
+      <p>正常升级保留应用数据；重新安装或卸载时，是否保留以飞牛的数据保留选项为准。操作前备份需要保存的配置和访问资料，不通过删除整个数据目录来改密码。</p>
+    </section>
+
+    <section id="recovery" class="guide-card">
+      <h2>恢复与反馈</h2>
+      <p>停止、重启、升级和卸载通过飞牛应用中心或封装入口进行，让网络与子进程完成收尾。出现待恢复状态时保留管理通道及错误现场；不要直接强杀主控或清理程序的 <code>current</code>、<code>previous</code> 和配置快照。</p>
+      <p>反馈问题请记录封装版本、客户端版本、系统与架构、复现步骤和脱敏错误信息。公开 Issue、日志和截图不包含真实密码、节点、订阅、访问令牌或私人地址。</p>
+      <p><a href="https://github.com/CyberShadowX/v2rayN-For-FNOS" target="_blank" rel="noopener">v2rayN 仓库</a> · <a href="https://github.com/CyberShadowX/Clash-Verge-For-FNOS" target="_blank" rel="noopener">Clash Verge Rev 仓库</a> · <a href="/">返回应用</a></p>
+    </section>
+  </main>
+</body>
+</html>

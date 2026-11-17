@@ -1,7 +1,7 @@
 """Portable discovery and guardian checks; every kernel/tool operation is fake."""
 
 import copy
-from contextlib import ExitStack
+from contextlib import ExitStack, nullcontext
 import importlib.util
 import json
 import os
@@ -243,7 +243,13 @@ class DiscoveryTests(unittest.TestCase):
         with patch.object(network.Path, "is_file", return_value=True), patch.object(network.os, "access", return_value=True):
             with patch.object(network, "_trusted_file", return_value=verified) as trust:
                 with patch.object(network.subprocess, "run", return_value=result({})) as execute:
-                    network._run(TAILSCALE_QUERY, timeout=5)
+                    # This test isolates standard-directory CLI selection.
+                    # Native daemon/socket validation is exercised separately,
+                    # so root Linux must not inspect the host's real /proc.
+                    with patch.object(network, "_tailscale_status_command",
+                                      side_effect=lambda executable: nullcontext([executable, "status", "--json"])) as command:
+                        network._run(TAILSCALE_QUERY, timeout=5)
+        command.assert_called_once_with(str(verified))
         trust.assert_called_once_with(Path("/usr/sbin/tailscale"))
         self.assertEqual(execute.call_args.args[0], [str(verified), "status", "--json"])
         self.assertEqual(execute.call_args.kwargs["timeout"], 5)

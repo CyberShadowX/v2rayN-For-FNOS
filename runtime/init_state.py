@@ -12,6 +12,9 @@ import stat
 import errno
 import tempfile
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from runtime.credentials import recover_pending
+
 
 def harden_runtime(base):
     """Revoke fnOS's installed-package write ACLs before package users run code.
@@ -139,6 +142,9 @@ def initialize(base, var, user):
     if control.is_symlink():raise ValueError('Control directory cannot be a symlink')
     control.mkdir(exist_ok=True);control.chmod(0o710);os.chown(control,0,account.pw_gid)
     ui = var / 'ui'
+    # Finish or roll back interrupted credential rotations before the portal
+    # starts. Existing credentials and user profiles remain intact.
+    recover_pending(var, meta['app'])
     result=subprocess.run(['runuser','-u',user,'--','python3',str(Path(__file__).resolve()),'--user-init','--base',str(base),'--var',str(var),'--user',user],check=True,capture_output=True,text=True)
     password=json.loads(result.stdout)['password']
     if password:

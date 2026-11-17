@@ -38,7 +38,7 @@ class PublicBuildTests(unittest.TestCase):
 
     def publication(self, **updates):
         value = {'app': 'v2rayn', 'owner': 'CyberShadowX',
-                 'repository': 'v2rayN-For-FNOS', 'version': '1.0.5'}
+                 'repository': 'v2rayN-For-FNOS', 'version': builder.WRAPPER_VERSION}
         value.update(updates)
         (self.root / 'publication.json').write_text(json.dumps(value), encoding='utf-8')
         return value
@@ -98,8 +98,8 @@ class PublicBuildTests(unittest.TestCase):
     def test_current_release_metadata_can_be_rebuilt(self):
         output = self.root / 'dist'
         output.mkdir()
-        (output / 'build-inventory.json').write_text('{"wrapper_version":"1.0.5"}', encoding='utf-8')
-        (output / 'SHA256SUMS.txt').write_text('a' * 64 + '  fnclash-1.0.5-x86.fpk\n', encoding='utf-8')
+        (output / 'build-inventory.json').write_text(json.dumps({'wrapper_version':builder.WRAPPER_VERSION}), encoding='utf-8')
+        (output / 'SHA256SUMS.txt').write_text('a' * 64 + f'  fnclash-{builder.WRAPPER_VERSION}-x86.fpk\n', encoding='utf-8')
         self.assertEqual(builder.validate_output(output, self.root), output)
 
     def test_output_and_publication_symlinks_are_rejected(self):

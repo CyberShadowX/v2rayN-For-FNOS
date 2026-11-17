@@ -8,10 +8,11 @@ failure.  No node credentials or subscription is stored here.
 from __future__ import annotations
 
 import ctypes
+from contextlib import contextmanager
 import ipaddress
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import re
 import secrets
 import signal
@@ -182,7 +183,10 @@ def build_config(socks_port: int, *, excluded_uids: Iterable[int], interface: st
 
 
 def _tool(name: str) -> str:
-    for prefix in ("/usr/sbin", "/sbin", "/usr/bin", "/bin"):
+    prefixes = ("/usr/sbin", "/sbin", "/usr/bin", "/bin")
+    if name == "tailscale":
+        prefixes += ("/usr/local/bin", "/usr/local/sbin")
+    for prefix in prefixes:
         candidate = Path(prefix) / name
         if candidate.is_file() and os.access(candidate, os.X_OK):
             # Tailscale is queried by the privileged guardian. Resolve the
@@ -193,8 +197,14 @@ def _tool(name: str) -> str:
 
 
 def _run(argv: list[str], *, input: str | None = None, check: bool = True, timeout: float = 10) -> subprocess.CompletedProcess[str]:
-    command = [_tool(argv[0]), *argv[1:]] if argv[0] in ("ip", "nft", "tailscale") else argv
-    result = subprocess.run(command, input=input, text=True, capture_output=True, timeout=timeout, check=False)
+    if argv[0] == "tailscale":
+        if argv != ["tailscale", "status", "--json"] or input is not None:
+            raise NetworkError("Only the fixed read-only Tailscale status query is supported")
+        with _tailscale_status_command(_tool("tailscale")) as command:
+            result = subprocess.run(command, text=True, capture_output=True, timeout=timeout, check=False)
+    else:
+        command = [_tool(argv[0]), *argv[1:]] if argv[0] in ("ip", "nft") else argv
+        result = subprocess.run(command, input=input, text=True, capture_output=True, timeout=timeout, check=False)
     if check and result.returncode:
         detail = (result.stderr or result.stdout).strip()[-1200:]
         raise NetworkError(f"{argv[0]} operation failed: {detail}")
@@ -226,6 +236,162 @@ def _trusted_file(path: Path) -> Path:
         if parent_meta.st_uid != 0 or parent_meta.st_mode & 0o022:
             raise NetworkError("Network executable has an untrusted parent directory")
     return resolved
+
+
+def _proc_bytes(descriptor: int, name: str, limit: int) -> bytes:
+    """Read a bounded proc file relative to the already opened process."""
+    flags = os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW
+    with os.fdopen(os.open(name, flags, dir_fd=descriptor), "rb") as source:
+        value = source.read(limit + 1)
+    if len(value) > limit:
+        raise NetworkError("Tailscale process metadata is oversized")
+    return value
+
+
+def _tailscaled_snapshot(descriptor: int) -> tuple[str, str, int, int, tuple[bytes, ...]]:
+    """Bind root credentials, argv and executable to one pinned /proc entry."""
+    metadata = os.fstat(descriptor)
+    if not stat.S_ISDIR(metadata.st_mode) or metadata.st_uid != 0 or metadata.st_mode & 0o022:
+        raise NetworkError("Tailscale daemon must be root-owned")
+    if _proc_bytes(descriptor, "comm", 64) != b"tailscaled\n":
+        raise NetworkError("Tailscale daemon identity changed")
+    fields = _proc_bytes(descriptor, "stat", 4096).rsplit(b") ", 1)[-1].split()
+    if len(fields) < 20 or fields[0] in (b"Z", b"X") or not fields[19].isdigit():
+        raise NetworkError("Tailscale daemon has invalid process identity")
+    uids = [line.split()[1:] for line in _proc_bytes(descriptor, "status", 16384).splitlines()
+            if line.startswith(b"Uid:")]
+    if uids != [[b"0", b"0", b"0", b"0"]]:
+        raise NetworkError("Tailscale daemon must retain root credentials")
+    target = os.readlink("exe", dir_fd=descriptor)
+    if not PurePosixPath(target).is_absolute() or PurePosixPath(target).name != "tailscaled":
+        raise NetworkError("Tailscale daemon has an unexpected executable")
+    # This identifies an already-running root process; this path is never
+    # executed by us. Native app packages can grant their service user an ACL
+    # on their binaries. Keep the strict _trusted_file rule for the CLI we do
+    # execute, and bind this running daemon to its actual root-owned inode.
+    executable = Path(target).resolve(strict=True)
+    real_meta, running_meta = executable.stat(), os.stat("exe", dir_fd=descriptor)
+    if (not stat.S_ISREG(real_meta.st_mode) or not stat.S_ISREG(running_meta.st_mode)
+            or real_meta.st_uid != 0 or running_meta.st_uid != 0
+            or real_meta.st_mode & 0o002
+            or not real_meta.st_mode & 0o111
+            or (real_meta.st_dev, real_meta.st_ino) != (running_meta.st_dev, running_meta.st_ino)):
+        raise NetworkError("Tailscale daemon executable changed")
+    command = _proc_bytes(descriptor, "cmdline", 65536)
+    if not command.endswith(b"\0"):
+        raise NetworkError("Tailscale daemon has invalid arguments")
+    arguments = tuple(command[:-1].split(b"\0"))
+    if not arguments[0] or PurePosixPath(os.fsdecode(arguments[0])).name != "tailscaled":
+        raise NetworkError("Tailscale daemon has invalid arguments")
+    return fields[19].decode("ascii"), str(executable), real_meta.st_dev, real_meta.st_ino, arguments
+
+
+def _tailscaled_process() -> tuple[int, tuple[str, str, int, int, tuple[bytes, ...]]]:
+    """Keep only one verified daemon; never infer a socket from user processes."""
+    selected = None
+    snapshot = None
+    count = 0
+    deadline = time.monotonic() + _DISCOVERY_TIMEOUT
+    try:
+        with os.scandir("/proc") as entries:
+            for entry in entries:
+                if not re.fullmatch(r"[1-9][0-9]*", entry.name):
+                    continue
+                count += 1
+                if count > _DISCOVERY_MAX_ROWS or time.monotonic() > deadline:
+                    raise NetworkError("Tailscale process discovery exceeded its safe bound")
+                descriptor = None
+                identified = False
+                try:
+                    descriptor = os.open("/proc/" + entry.name,
+                                         os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC | os.O_NOFOLLOW)
+                    if _proc_bytes(descriptor, "comm", 64) != b"tailscaled\n":
+                        continue
+                    identified = True
+                    current = _tailscaled_snapshot(descriptor)
+                    if selected is not None:
+                        raise NetworkError("Multiple Tailscale daemons are ambiguous")
+                    selected, snapshot = descriptor, current
+                    descriptor = None
+                except (FileNotFoundError, ProcessLookupError):
+                    # An unrelated process can exit during the scan. Once it
+                    # identifies as tailscaled, disappearance is a failed check.
+                    if identified:
+                        raise NetworkError("Tailscale daemon disappeared during discovery")
+                finally:
+                    if descriptor is not None:
+                        os.close(descriptor)
+        if selected is None:
+            raise NetworkError("Cannot identify one trusted root Tailscale daemon")
+        return selected, snapshot
+    except BaseException:
+        if selected is not None:
+            os.close(selected)
+        raise
+
+
+def _tailscale_socket_argument(arguments: tuple[bytes, ...]) -> str:
+    supplied = []
+    index = 1
+    while index < len(arguments):
+        value = arguments[index]
+        if value in (b"--socket", b"-socket"):
+            index += 1
+            if index >= len(arguments):
+                raise NetworkError("Tailscale socket argument is missing")
+            supplied.append(os.fsdecode(arguments[index]))
+        elif value.startswith((b"--socket=", b"-socket=")):
+            supplied.append(os.fsdecode(value.split(b"=", 1)[1]))
+        index += 1
+    if len(supplied) > 1:
+        raise NetworkError("Tailscale socket arguments are ambiguous")
+    value = supplied[0] if supplied else "/var/run/tailscale/tailscaled.sock"
+    if (not PurePosixPath(value).is_absolute() or value.startswith("//")
+            or ".." in value.split("/") or any(ord(char) < 32 or ord(char) == 127 for char in value)
+            or len(os.fsencode(value)) > 107):
+        raise NetworkError("Tailscale requires a bounded absolute Unix socket path")
+    return value
+
+
+def _trusted_socket(value: str) -> Path:
+    candidate = Path(value)
+    metadata = candidate.lstat()
+    if not stat.S_ISSOCK(metadata.st_mode) or metadata.st_uid != 0:
+        raise NetworkError("Tailscale socket must be a root-owned real Unix socket")
+    resolved = candidate.resolve(strict=True)
+    real_meta = resolved.lstat()
+    if (metadata.st_dev, metadata.st_ino) != (real_meta.st_dev, real_meta.st_ino):
+        raise NetworkError("Tailscale socket changed during discovery")
+    for parent in resolved.parents:
+        parent_meta = parent.stat()
+        if (not stat.S_ISDIR(parent_meta.st_mode) or parent_meta.st_uid != 0
+                or parent_meta.st_mode & 0o022):
+            raise NetworkError("Tailscale socket has an untrusted parent directory")
+    return resolved
+
+
+@contextmanager
+def _tailscale_status_command(executable: str):
+    # Actual network control is root Linux only. Keep portable configuration
+    # tests and nonprivileged CLI callers independent of Linux /proc details.
+    if sys.platform != "linux" or os.geteuid() != 0:
+        yield [executable, "status", "--json"]
+        return
+    descriptor, snapshot = _tailscaled_process()
+    try:
+        value = _tailscale_socket_argument(snapshot[4])
+        path = _trusted_socket(value)
+        metadata = path.stat()
+        if _tailscaled_snapshot(descriptor) != snapshot:
+            raise NetworkError("Tailscale daemon identity changed before status query")
+        yield [executable, "--socket=" + str(path), "status", "--json"]
+        verified = _trusted_socket(value)
+        current = verified.stat()
+        if (verified != path or (current.st_dev, current.st_ino) != (metadata.st_dev, metadata.st_ino)
+                or _tailscaled_snapshot(descriptor) != snapshot):
+            raise NetworkError("Tailscale daemon or socket changed during status query")
+    finally:
+        os.close(descriptor)
 
 
 def _write_json(path: Path, content: dict[str, Any]) -> None:

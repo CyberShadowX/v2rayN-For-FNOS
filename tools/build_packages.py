@@ -22,7 +22,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 FNOS_ROOT = ROOT.parent
-WRAPPER_VERSION = '1.0.5'
+WRAPPER_VERSION = '1.0.6'
 FNPACK_SHA256 = 'd7af4bd716b009c58f5bcd931615f39db121e7d4b75dc759e575c4fb2879b6ee'
 PUBLIC_REPOSITORIES = {'v2rayn': 'v2rayN-For-FNOS', 'clash': 'Clash-Verge-For-FNOS'}
 APPS = {
@@ -329,6 +329,13 @@ def prepare(app: str, fnpack: Path, *, fnpack_sha256: str | None = None) -> Path
     clear_generated(support, package)
     support.mkdir()
     shutil.copyfile(ROOT / 'packaging/lifecycle_guard.py', support / 'lifecycle_guard.py')
+    bundled_tools = package / 'app/tools'
+    clear_generated(bundled_tools, package);bundled_tools.mkdir()
+    shutil.copyfile(ROOT / 'tools/reset_portal_password.py', bundled_tools / 'reset_portal_password.py')
+    bundled_docs = package / 'app/docs'
+    clear_generated(bundled_docs, package);bundled_docs.mkdir()
+    for guide in ('USER_GUIDE.md', 'ACCESS.md'):
+        shutil.copyfile(ROOT / 'docs' / guide, bundled_docs / guide)
     info = {'app': app, 'wrapper_version': WRAPPER_VERSION, **{key: meta[key] for key in ('title', 'port', 'vnc_port', 'display',
                                                    'socks_port', 'upstream_version')}}
     info.update(network_core_version=core_source['version'],network_core_sha256=core_source['binary_sha256'])
@@ -562,6 +569,11 @@ def validate_fpk(path: Path, app: str) -> dict:
         ui_config = json.load(inner.extractfile(inner_names[prefix + 'ui/config']))
         if ui_config.get('.url', {}).get(meta['id'] + '.Application', {}).get('title') != meta['title']:
             raise ValueError('FPK desktop entry title does not match the requested name')
+        for required in ('tools/reset_portal_password.py','docs/USER_GUIDE.md','docs/ACCESS.md',
+                         'web/help.html','ui/images/icon_64.png','ui/images/icon_256.png'):
+            member=inner_names.get(prefix+required)
+            if member is None or not member.isfile() or member.size==0:
+                raise ValueError('FPK user-facing resources are incomplete: '+required)
     return {'outer_entries': len(entries), 'payload_entries': len(inner_names), 'native_runtime': True,
             'gui_payload': True, 'docker_definitions': False, 'unix_permissions': True,
             'app_checksum': True, 'manifest_lf': True, 'nonempty_wizards': True,
